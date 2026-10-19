@@ -1,0 +1,14 @@
+{
+  "name": "Ligne SQL",
+  "short_name": "Ligne SQL",
+  "description": "Révision SQL / MySQL en 8 jours : cours, flashcards, quiz et exercices.",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1A2747",
+  "theme_color": "#1A2747",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
