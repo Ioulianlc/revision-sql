@@ -1,6 +1,6 @@
 // Service worker : garde la page en cache pour qu'elle fonctionne hors ligne (iPhone compris)
 // Changer CACHE_NAME à chaque modification des fichiers listés pour forcer la mise à jour.
-const CACHE_NAME = 'ligne-sql-v1';
+const CACHE_NAME = 'ligne-sql-v2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-512.png', './fiche-revision-sql.md', './bibliotheque.sql'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 

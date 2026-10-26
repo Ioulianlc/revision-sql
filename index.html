@@ -313,6 +313,42 @@ select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid
 .part.is-right { background: var(--ok-bg); border-color: var(--ok); }
 .part.is-wrong { background: var(--bad-bg); border-color: var(--bad); }
 .zone-label { font: 700 12px/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+/* Reconstruis la requête */
+.game.feature { grid-column: 1 / -1; }
+.bd-stripe { display: flex; gap: 3px; margin-bottom: 2px; }
+.bd-stripe i { flex: 1; height: 6px; border-radius: 3px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.stars { color: var(--warn); letter-spacing: 1px; white-space: nowrap; }
+.bd-sec { background: var(--surface); border: 1px solid var(--rule); border-top: 6px solid var(--c); border-radius: var(--r); padding: 12px; display: grid; gap: 12px; }
+.bd-sec h3 { margin: 0; display: flex; align-items: center; gap: 10px; font: 800 17px/1.2 var(--font-display); }
+.bd-sec h3 .lb { width: 28px; height: 28px; font-size: 13px; }
+.bd-got { margin-left: auto; font: 700 13px/1 var(--font-display); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bd-stops { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 10px 6px; }
+.bd-stop { position: relative; width: 100%; display: grid; justify-items: center; gap: 4px; padding: 2px 0; background: none; border: 0; color: var(--ink); }
+.bd-stop b { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; border: 4px solid var(--c); background: var(--surface); font: 800 14px/1 var(--font-display); font-variant-numeric: tabular-nums; transition: transform .15s; }
+.bd-stop:hover b { transform: scale(1.08); }
+.bd-stop.played b { background: var(--c); color: var(--ci); }
+.bd-stop.next b { box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--accent); }
+.bd-stop .stars { font-size: 11px; min-height: 13px; line-height: 13px; }
+.bd-db summary { font-size: 14px; color: var(--muted); }
+.bd-db[open] summary { margin-bottom: 8px; }
+.bd-schema { margin: 0; padding-left: 18px; font-size: 13.5px; display: grid; gap: 4px; }
+.bd-code { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 6px; min-height: 60px; }
+.bd-code ol { list-style: none; margin: 0; padding: 0; counter-reset: ln; display: grid; gap: 2px; }
+.bd-code li { counter-increment: ln; display: grid; grid-template-columns: 2em 1fr; align-items: start; }
+.bd-code li::before { content: counter(ln); color: var(--t-com); font: 12px/20px var(--font-mono); text-align: right; padding: 5px 8px 0 0; }
+.bd-line { width: 100%; text-align: left; background: transparent; color: inherit; border: 0; border-left: 3px solid transparent; border-radius: 4px; padding: 5px 8px; font: 13.5px/20px var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.bd-line:not([disabled]):hover { background: rgba(255, 255, 255, .07); }
+.bd-line[disabled] { cursor: default; }
+.bd-line.is-right { border-left-color: #4CCB93; background: rgba(76, 203, 147, .14); }
+.bd-line.is-wrong { border-left-color: #FF7398; background: rgba(255, 115, 152, .18); }
+.bd-tag { margin-left: 8px; font: 800 10px/1 var(--font-display); letter-spacing: .06em; text-transform: uppercase; background: #FF7398; color: #1B0A10; padding: 2px 5px; border-radius: 3px; vertical-align: 1px; }
+.bd-code :focus-visible { outline-color: #82C8FF; }
+.bd-empty { margin: 0; padding: 14px 10px; color: var(--t-com); font-size: 14px; }
+.bd-traps { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; font-size: 15px; }
+.bd-traps ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.bd-recap { list-style: none; margin: 0; padding: 0; }
+.bd-recap .recap-item { position: relative; grid-template-columns: 1fr auto; align-items: center; }
 
 /* ---------- PC ---------- */
 .pc-sec { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); }
@@ -1470,6 +1506,331 @@ const ORDER_RAW = [
 { m: 'm5', p: `Germinal (id 7) est rendu : remets l'UPDATE dans l'ordre.`, parts: [`UPDATE loan`, `SET return_date = CURDATE()`, `WHERE book_id = 7 AND return_date IS NULL;`], why: `UPDATE table, SET colonne = valeur, WHERE ciblé.` },
 ];
 
+// ---------- Reconstruis la requête (parcours de puzzles) ----------
+// s = tronçon, db = base utilisée, b = blocs dans l'ordre (l'indentation est gardée à l'affichage),
+// free = plages [début, fin] d'indices de b dont l'ordre est libre,
+// x = intrus [bloc, pourquoi il est faux], r = résultat vérifié sur MySQL 8.
+const BUILD_SECTIONS = [
+  { s: 1, m: 'm6', title: 'Lire et filtrer' },
+  { s: 2, m: 'm8', title: 'Agrégats et fonctions' },
+  { s: 3, m: 'm9', title: 'Jointures' },
+  { s: 4, m: 'm10', title: 'Sous-requêtes et UNION' },
+  { s: 5, m: 'm4', title: 'Créer la structure' },
+  { s: 6, m: 'm5', title: 'Modifier les données et administrer' },
+];
+const DB_SCHEMAS = {
+  bibliotheque: [
+    ['subscription', 'id, label, annual_rate, max_concurrent_loans'],
+    ['member', 'id, last_name, first_name, registration_date, #subscription_id'],
+    ['author', 'id, last_name, first_name'],
+    ['book', 'id, title, type, summary, publication_date, catalog_entry_date, dewey_code, availability, #author_id'],
+    ['loan', 'id, loan_date, due_date, return_date, #member_id, #book_id'],
+  ],
+  subways: [
+    ['stations', 'id, name'],
+    ['stations_in_lines', 'id, #station_id, #line_id'],
+    ['sublines', 'id, number, color'],
+    ['visitors', 'id, #line_id, quantity, v_date'],
+  ],
+};
+const BUILD_RAW = [
+// ---- Tronçon 1 : lire et filtrer ----
+{ s: 1, m: 'm6', db: 'ecole', q: `Prénom et note des élèves de B3, de la meilleure note à la moins bonne.`,
+  b: [`SELECT prenom, note`, `FROM eleves`, `WHERE classe = 'B3'`, `ORDER BY note DESC;`],
+  r: `Driss 17 · Ana 14 · Bob NULL (en DESC, MySQL range les NULL en dernier).`,
+  why: `L'ordre d'écriture ne bouge jamais : SELECT, FROM, WHERE, ORDER BY.` },
+{ s: 1, m: 'm6', db: 'ecole', q: `Prénoms des élèves qui n'ont pas de note.`,
+  b: [`SELECT prenom`, `FROM eleves`, `WHERE note IS NULL;`],
+  x: [[`WHERE note = NULL;`, `Comparer avec NULL donne NULL (ni vrai ni faux) : la requête renvoie 0 ligne.`]],
+  r: `Bob`,
+  why: `NULL se teste avec IS NULL ou IS NOT NULL, jamais avec = ou <>.` },
+{ s: 1, m: 'm6', db: 'bibliotheque', q: `Les 3 livres les plus récents : titre et date de parution.`,
+  b: [`SELECT title, publication_date`, `FROM book`, `ORDER BY publication_date DESC`, `LIMIT 3;`],
+  x: [[`ORDER BY publication_date ASC`, `ASC (le tri par défaut) met les plus anciens en premier : on obtiendrait les 3 livres les plus vieux.`]],
+  r: `Sapiens (2011) · Dragon Ball - Tome 1 (1985) · Dr Slump - Tome 1 (1980)`,
+  why: `Pour un « top N » : ORDER BY classe, puis LIMIT coupe.` },
+{ s: 1, m: 'm6', db: 'subways', q: `Stations dont le nom commence par « Porte », par ordre alphabétique.`,
+  b: [`SELECT name`, `FROM stations`, `WHERE name LIKE 'Porte%'`, `ORDER BY name;`],
+  x: [[`WHERE name = 'Porte%'`, `Avec =, le % est un caractère comme un autre : on chercherait une station nommée exactement « Porte% ».`]],
+  r: `23 stations, de Porte d'Auteuil à Porte Maillot.`,
+  why: `LIKE avec % = « n'importe quelle suite de caractères ». 'Porte%' : commence par Porte. '%Porte%' : contient Porte.` },
+{ s: 1, m: 'm6', db: 'bibliotheque', q: `Romans et mangas actuellement disponibles : titre et type.`,
+  b: [`SELECT title, type`, `FROM book`, `WHERE type IN ('roman', 'manga')`, `AND availability = 'disponible';`],
+  x: [[`OR availability = 'disponible';`, `Avec OR, on aurait tous les romans et mangas, plus tous les livres disponibles (Astérix compris).`]],
+  r: `Notre-Dame de Paris · L'Assommoir`,
+  why: `IN remplace une suite de OR sur la même colonne. AND ajoute une condition qui doit aussi être vraie.` },
+{ s: 1, m: 'm6', db: 'ecole', q: `Élèves dont la note est comprise entre 12 et 17, bornes incluses, de la plus basse à la plus haute.`,
+  b: [`SELECT prenom, note`, `FROM eleves`, `WHERE note BETWEEN 12 AND 17`, `ORDER BY note;`],
+  x: [[`WHERE note > 12 AND note < 17`, `> et < excluent les bornes : Emma (12) et Driss (17) disparaîtraient.`]],
+  r: `Emma 12 · Ana 14 · Driss 17`,
+  why: `BETWEEN a AND b inclut a et b. C'est l'équivalent de >= a AND <= b.` },
+{ s: 1, m: 'm6', db: 'bibliotheque', q: `Les différents types des livres parus à partir de 1900, sans doublon.`,
+  b: [`SELECT DISTINCT type`, `FROM book`, `WHERE publication_date >= '1900-01-01';`],
+  x: [[`SELECT type DISTINCT`, `DISTINCT se place juste après SELECT, avant les colonnes : erreur de syntaxe.`]],
+  r: `manga · bd · non-fiction (les deux mangas ne donnent qu'une ligne)`,
+  why: `DISTINCT supprime les lignes en double du résultat. Une date s'écrit 'AAAA-MM-JJ'.` },
+{ s: 1, m: 'm6', db: 'subways', q: `Page 2 de la liste alphabétique des stations, avec 10 stations par page.`,
+  b: [`SELECT name`, `FROM stations`, `ORDER BY name`, `LIMIT 10 OFFSET 10;`],
+  x: [[`LIMIT 10 OFFSET 20;`, `OFFSET 20 saute 20 lignes : ce serait la page 3.`]],
+  r: `Aubervilliers - Pantin - Quatre Chemins … Bel-Air (les stations 11 à 20).`,
+  why: `OFFSET = (numéro de page − 1) × taille de la page. Sans ORDER BY, les pages n'auraient pas d'ordre garanti.` },
+{ s: 1, m: 'm7', db: 'bibliotheque', q: `Une seule colonne « membre » : prénom, espace, nom en majuscules. Trié par nom.`,
+  b: [`SELECT CONCAT(first_name, ' ', UPPER(last_name)) AS membre`, `FROM member`, `ORDER BY last_name;`],
+  x: [[`SELECT first_name + ' ' + last_name AS membre`, `En MySQL, + est une addition de nombres : chaque texte vaut 0, on obtient 0 sur toutes les lignes.`]],
+  r: `Inès BERNARD · Hugo DURAND · Sami LEFÈVRE · Léa MARTIN · Jade MOREAU · Noah PETIT`,
+  why: `Les fonctions s'imbriquent : UPPER() transforme le nom, puis CONCAT() assemble les morceaux.` },
+{ s: 1, m: 'm7', db: 'bibliotheque', q: `Emprunts de septembre 2026 : id et date d'emprunt, du plus ancien au plus récent.`,
+  b: [`SELECT id, loan_date`, `FROM loan`, `WHERE YEAR(loan_date) = 2026`, `AND MONTH(loan_date) = 9`, `ORDER BY loan_date;`],
+  x: [[`AND MONTH(loan_date) = 'septembre'`, `MONTH() renvoie un nombre de 1 à 12 : la comparaison avec un texte ne trouve rien (0 ligne).`]],
+  r: `1 (01/09) · 2 (05/09) · 3 (10/09) · 9 (20/09)`,
+  why: `YEAR() et MONTH() extraient une partie de la date. Variante qui profite d'un index : WHERE loan_date BETWEEN '2026-09-01' AND '2026-09-30'.` },
+
+// ---- Tronçon 2 : agrégats et fonctions ----
+{ s: 2, m: 'm8', db: 'ecole', q: `Moyenne des notes par classe.`,
+  b: [`SELECT classe, AVG(note) AS moyenne`, `FROM eleves`, `GROUP BY classe;`],
+  x: [[`GROUP BY note;`, `On regroupe par la colonne qui forme les groupes (la classe). Ici, classe n'est pas regroupée : erreur 1055 (ONLY_FULL_GROUP_BY).`]],
+  r: `B3 15.5000 · B2 10.5000. AVG ignore la note NULL de Bob : (14 + 17) / 2.`,
+  why: `Toute colonne du SELECT qui n'est pas dans un agrégat doit être dans le GROUP BY.` },
+{ s: 2, m: 'm8', db: 'ecole', q: `Pour chaque classe : nombre d'élèves et nombre d'élèves notés.`,
+  b: [`SELECT classe, COUNT(*) AS eleves, COUNT(note) AS notes`, `FROM eleves`, `GROUP BY classe;`],
+  x: [[`SELECT classe, COUNT(*) AS eleves, COUNT(*) AS notes`, `COUNT(*) compte les lignes, NULL compris : on aurait 3 élèves notés en B3 au lieu de 2.`]],
+  r: `B3 : 3 élèves, 2 notés · B2 : 2 élèves, 2 notés`,
+  why: `COUNT(*) compte les lignes. COUNT(colonne) ignore les NULL.` },
+{ s: 2, m: 'm8', db: 'bibliotheque', q: `Nombre de livres par type, seulement pour les types qui ont au moins 2 livres.`,
+  b: [`SELECT type, COUNT(*) AS nb`, `FROM book`, `GROUP BY type`, `HAVING COUNT(*) >= 2;`],
+  x: [[`WHERE COUNT(*) >= 2`, `WHERE filtre les lignes AVANT le regroupement : un agrégat y est interdit (erreur 1111).`]],
+  r: `roman 4 · manga 2`,
+  why: `WHERE filtre les lignes, HAVING filtre les groupes.` },
+{ s: 2, m: 'm8', db: 'subways', q: `Pour chaque ligne (line_id) de la table visitors : total des visiteurs et record sur une journée.`,
+  b: [`SELECT line_id, SUM(quantity) AS total, MAX(quantity) AS record`, `FROM visitors`, `GROUP BY line_id;`],
+  x: [[`SELECT line_id, COUNT(quantity) AS total, MAX(quantity) AS record`, `COUNT compte les jours relevés, il n'additionne pas les visiteurs : c'est le rôle de SUM.`]],
+  r: `1 → 75084 (record 58769) · 2 → 171 (record 100)`,
+  why: `SUM additionne, COUNT compte, MAX prend la plus grande valeur, le tout groupe par groupe.` },
+{ s: 2, m: 'm8', db: 'ecole', q: `Classes dont la moyenne dépasse 12, de la meilleure moyenne à la moins bonne.`,
+  b: [`SELECT classe, AVG(note) AS moyenne`, `FROM eleves`, `GROUP BY classe`, `HAVING AVG(note) > 12`, `ORDER BY moyenne DESC;`],
+  x: [[`WHERE AVG(note) > 12`, `Un agrégat est interdit dans WHERE : la moyenne n'existe qu'une fois les groupes formés (erreur 1111).`]],
+  r: `B3 15.5000 (B2 est à 10.5, elle est filtrée)`,
+  why: `Ordre d'écriture : SELECT, FROM, WHERE, GROUP BY, HAVING, ORDER BY, LIMIT.` },
+{ s: 2, m: 'm7', db: 'bibliotheque', q: `Durée moyenne d'un emprunt rendu, en jours, arrondie à 1 décimale.`,
+  b: [`SELECT ROUND(AVG(DATEDIFF(return_date, loan_date)), 1) AS duree`, `FROM loan`, `WHERE return_date IS NOT NULL;`],
+  x: [
+    [`SELECT ROUND(AVG(DATEDIFF(loan_date, return_date)), 1) AS duree`, `DATEDIFF(a, b) calcule a − b : dans ce sens, on obtient −18.7.`],
+    [`WHERE return_date != NULL;`, `Comparer avec NULL donne toujours NULL : 0 ligne, donc une moyenne NULL.`],
+  ],
+  r: `18.7`,
+  why: `On lit de l'intérieur vers l'extérieur : DATEDIFF pour chaque emprunt, AVG sur l'ensemble, ROUND à la fin.` },
+{ s: 2, m: 'm8', db: 'bibliotheque', q: `Pour chaque membre (member_id) : nombre d'emprunts déjà rendus. Garde ceux qui en ont rendu au moins 2, triés par member_id.`,
+  b: [`SELECT member_id, COUNT(*) AS rendus`, `FROM loan`, `WHERE return_date IS NOT NULL`, `GROUP BY member_id`, `HAVING COUNT(*) >= 2`, `ORDER BY member_id;`],
+  x: [[`HAVING return_date IS NOT NULL`, `return_date n'est ni regroupée ni agrégée : HAVING ne la connaît pas (erreur 1054). Une condition sur chaque ligne va dans WHERE.`]],
+  r: `1 → 2 · 2 → 2 · 3 → 2 (le membre 4 n'en a rendu qu'un)`,
+  why: `Six clauses, six places fixes. WHERE trie les lignes avant de compter, HAVING trie les groupes après.` },
+{ s: 2, m: 'm7', db: 'bibliotheque', q: `Nombre de membres inscrits par année d'inscription, de la plus ancienne à la plus récente.`,
+  b: [`SELECT YEAR(registration_date) AS annee, COUNT(*) AS nb`, `FROM member`, `GROUP BY YEAR(registration_date)`, `ORDER BY annee;`],
+  x: [[`GROUP BY registration_date`, `On aurait un groupe par date exacte (6 groupes d'un seul membre), pas un groupe par année.`]],
+  r: `2024 → 2 · 2025 → 2 · 2026 → 2`,
+  why: `On peut regrouper sur une expression, pas seulement sur une colonne.` },
+{ s: 2, m: 'm8', db: 'subways', q: `Couleurs partagées par plusieurs lignes, avec la liste des lignes concernées.`,
+  b: [`SELECT color, GROUP_CONCAT(number ORDER BY id SEPARATOR ', ') AS lignes`, `FROM sublines`, `GROUP BY color`, `HAVING COUNT(*) > 1;`],
+  x: [[`SELECT color, number AS lignes`, `number n'est ni regroupée ni agrégée : erreur 1055. GROUP_CONCAT colle toutes les valeurs du groupe en une seule chaîne.`]],
+  r: `#83C491 → 6, 7bis · #98D4E2 → 3bis, 13 · #D5C900 → 9, 17 · #F3A4BA → 7, 16`,
+  why: `GROUP_CONCAT est un agrégat comme COUNT : il renvoie une valeur par groupe.` },
+{ s: 2, m: 'm7', db: 'bibliotheque', q: `Chaque livre avec une colonne « epoque » qui vaut 'avant 1900' ou '1900 et après'.`,
+  b: [`SELECT title,`, `  CASE WHEN YEAR(publication_date) < 1900 THEN 'avant 1900'`, `  ELSE '1900 et après'`, `  END AS epoque`, `FROM book;`],
+  x: [[`  END CASE AS epoque`, `END CASE ne s'utilise que dans les procédures stockées. Dans une requête, CASE se ferme par END (erreur 1064 sinon).`]],
+  r: `4 livres « avant 1900 » (ceux de Hugo et de Zola) · 4 « 1900 et après »`,
+  why: `CASE WHEN … THEN … ELSE … END se lit comme un si / sinon et produit une colonne calculée.` },
+
+// ---- Tronçon 3 : jointures ----
+{ s: 3, m: 'm9', db: 'bibliotheque', q: `Titre de chaque livre avec le nom de son auteur.`,
+  b: [`SELECT b.title, a.last_name`, `FROM book b`, `JOIN author a`, `ON a.id = b.author_id;`],
+  r: `8 lignes, de Les Misérables (Hugo) à L'Assommoir (Zola)`,
+  why: `JOIN ajoute une table, ON dit quelles colonnes doivent être égales : la clé étrangère d'un côté, la clé primaire de l'autre.` },
+{ s: 3, m: 'm9', db: 'ecole', q: `Tous les clubs avec le prénom de l'élève responsable, clubs sans responsable compris.`,
+  b: [`SELECT c.nom, e.prenom`, `FROM clubs c`, `LEFT JOIN eleves e`, `ON e.id = c.eleve_id;`],
+  x: [[`INNER JOIN eleves e`, `INNER JOIN ne garde que les lignes qui ont une correspondance : Musique (sans élève) disparaîtrait.`]],
+  r: `Théâtre Ana · Échecs Chloé · Foot Ana · Musique NULL`,
+  why: `LEFT JOIN garde toutes les lignes de la table de gauche (celle du FROM) et met NULL quand rien ne correspond.` },
+{ s: 3, m: 'm9', db: 'bibliotheque', q: `Chaque membre avec le label de son abonnement, triés par nom de famille.`,
+  b: [`SELECT m.last_name, m.first_name, s.label`, `FROM member m`, `JOIN subscription s ON s.id = m.subscription_id`, `ORDER BY m.last_name;`],
+  x: [[`JOIN subscription s ON s.id = m.id`, `On relierait le membre 1 à l'abonnement 1, le membre 2 à l'abonnement 2… La jointure passe par la clé étrangère subscription_id.`]],
+  r: `Bernard Premium · Durand Découverte · Lefèvre Standard · Martin Standard · Moreau Découverte · Petit Standard`,
+  why: `Condition de jointure = clé étrangère = clé primaire.` },
+{ s: 3, m: 'm9', db: 'subways', q: `Stations de la ligne 14, par ordre alphabétique.`,
+  b: [`SELECT s.name`, `FROM sublines sl`, `JOIN stations_in_lines sil ON sil.line_id = sl.id`, `JOIN stations s ON s.id = sil.station_id`, `WHERE sl.number = '14'`, `ORDER BY s.name;`],
+  x: [[`JOIN stations s ON s.id = sil.line_id`, `sil.line_id désigne une ligne, pas une station : on obtiendrait 12 fois « Barbara », la station dont l'id (16) est celui de la ligne 14.`]],
+  r: `12 stations, de Bercy à Saint-Ouen.`,
+  why: `stations_in_lines est la table de liaison entre stations et lignes : on passe toujours par elle.` },
+{ s: 3, m: 'm9', db: 'ecole', q: `Élèves qui ne sont responsables d'aucun club.`,
+  b: [`SELECT e.prenom`, `FROM eleves e`, `LEFT JOIN clubs c ON c.eleve_id = e.id`, `WHERE c.id IS NULL;`],
+  x: [
+    [`JOIN clubs c ON c.eleve_id = e.id`, `Un JOIN simple supprime justement les élèves sans club : il ne resterait rien à trouver.`],
+    [`WHERE c.id = NULL;`, `= NULL n'est jamais vrai : 0 ligne.`],
+  ],
+  r: `Bob · Driss · Emma`,
+  why: `Anti-jointure : LEFT JOIN, puis on garde les lignes où la table de droite est NULL.` },
+{ s: 3, m: 'm9', db: 'bibliotheque', q: `Emprunts en cours : prénom du membre, titre du livre et date de retour prévue, la plus proche d'abord.`,
+  b: [`SELECT m.first_name, b.title, l.due_date`, `FROM loan l`, `JOIN member m ON m.id = l.member_id`, `JOIN book b ON b.id = l.book_id`, `WHERE l.return_date IS NULL`, `ORDER BY l.due_date;`],
+  free: [[2, 3]],
+  r: `Léa, Les Misérables, 26/09 · Inès, Dragon Ball - Tome 1, 22/10 · Noah, Germinal, 26/10`,
+  why: `loan porte les deux clés étrangères : on part d'elle et on joint member et book, dans l'ordre qu'on veut.` },
+{ s: 3, m: 'm9', db: 'bibliotheque', q: `Nombre d'emprunts de chaque membre, y compris ceux qui n'ont jamais emprunté (0).`,
+  b: [`SELECT m.first_name, COUNT(l.id) AS nb`, `FROM member m`, `LEFT JOIN loan l ON l.member_id = m.id`, `GROUP BY m.id, m.first_name`, `ORDER BY nb DESC;`],
+  x: [[`SELECT m.first_name, COUNT(*) AS nb`, `Avec LEFT JOIN, un membre sans emprunt garde une ligne remplie de NULL : COUNT(*) la compte et donne 1 au lieu de 0.`]],
+  r: `Léa 3 · Inès 3 · Hugo 2 · Noah 2 · Jade 0 · Sami 0`,
+  why: `Après un LEFT JOIN, on compte une colonne de la table de droite : COUNT ignore ses NULL.` },
+{ s: 3, m: 'm9', db: 'subways', q: `Total des visiteurs par numéro de ligne, du plus grand au plus petit.`,
+  b: [`SELECT sl.number, SUM(v.quantity) AS total`, `FROM visitors v`, `JOIN sublines sl ON sl.id = v.line_id`, `GROUP BY sl.id, sl.number`, `ORDER BY total DESC;`],
+  x: [[`JOIN sublines sl ON sl.number = v.line_id`, `line_id contient l'id de la ligne, pas son numéro. Ça tombe juste pour les lignes 1 et 2 par hasard, mais l'id 4 est la ligne 3bis.`]],
+  r: `1 → 75084 · 2 → 171`,
+  why: `On joint, on regroupe, on additionne : le numéro affiché vient de sublines.` },
+{ s: 3, m: 'm9', db: 'bibliotheque', q: `Titres empruntés au moins une fois par un membre Premium, sans doublon.`,
+  b: [`SELECT DISTINCT b.title`, `FROM subscription s`, `JOIN member m ON m.subscription_id = s.id`, `JOIN loan l ON l.member_id = m.id`, `JOIN book b ON b.id = l.book_id`, `WHERE s.label = 'Premium';`],
+  x: [[`JOIN book b ON b.id = l.id`, `On relierait l'emprunt n°5 au livre n°5. Il faut la clé étrangère l.book_id.`]],
+  r: `Dragon Ball - Tome 1 · Sapiens · L'Assommoir (tous empruntés par Inès)`,
+  why: `On suit le chemin des clés : subscription → member → loan → book. Chaque ON n'utilise que des tables déjà jointes.` },
+{ s: 3, m: 'm9', db: 'subways', q: `Stations directement reliées à « Louis Blanc » (même ligne, sans changer), Louis Blanc exclue.`,
+  b: [`SELECT DISTINCT s2.name`, `FROM stations s1`, `JOIN stations_in_lines a ON a.station_id = s1.id`, `JOIN stations_in_lines b ON b.line_id = a.line_id`, `JOIN stations s2 ON s2.id = b.station_id`, `WHERE s1.name = 'Louis Blanc'`, `AND s2.id <> s1.id;`],
+  x: [[`JOIN stations_in_lines b ON b.station_id = a.station_id`, `b serait la même station que a : on retomberait sur Louis Blanc, que le dernier filtre exclut (0 ligne). On cherche la même LIGNE (line_id).`]],
+  r: `43 stations (lignes 7 et 7bis)`,
+  why: `Auto-jointure : la même table utilisée deux fois, avec deux alias différents.` },
+
+// ---- Tronçon 4 : sous-requêtes et UNION ----
+{ s: 4, m: 'm10', db: 'ecole', q: `Élèves dont la note dépasse la moyenne de tous les élèves.`,
+  b: [`SELECT prenom, note`, `FROM eleves`, `WHERE note > (`, `  SELECT AVG(note) FROM eleves`, `);`],
+  x: [[`WHERE note > AVG(note)`, `Un agrégat est interdit dans WHERE (erreur 1111) : il faut une sous-requête qui calcule la moyenne à part.`]],
+  r: `Ana 14 · Driss 17 (la moyenne vaut 13)`,
+  why: `Une sous-requête scalaire renvoie une seule valeur : on peut la comparer avec >.` },
+{ s: 4, m: 'm10', db: 'bibliotheque', q: `Livres qui n'ont jamais été empruntés.`,
+  b: [`SELECT title`, `FROM book`, `WHERE id NOT IN (`, `  SELECT book_id FROM loan`, `);`],
+  x: [[`  SELECT id FROM loan`, `loan.id est le numéro de l'emprunt. La colonne qui désigne le livre, c'est book_id. Ici, les ids d'emprunt 1 à 10 couvrent tous les ids de livres : 0 ligne.`]],
+  r: `Dr Slump - Tome 1`,
+  why: `NOT IN est sûr ici car book_id est NOT NULL. Un seul NULL dans la sous-requête et NOT IN ne renverrait plus rien.` },
+{ s: 4, m: 'm10', db: 'bibliotheque', q: `Membres qui n'ont jamais emprunté, avec NOT EXISTS.`,
+  b: [`SELECT m.first_name, m.last_name`, `FROM member m`, `WHERE NOT EXISTS (`, `  SELECT 1 FROM loan l`, `  WHERE l.member_id = m.id`, `);`],
+  r: `Jade Moreau · Sami Lefèvre`,
+  why: `Sous-requête corrélée : elle utilise m.id de la requête externe et se rejoue pour chaque membre.` },
+{ s: 4, m: 'm10', db: 'bibliotheque', q: `Membres qui ont déjà emprunté une BD.`,
+  b: [`SELECT first_name, last_name`, `FROM member`, `WHERE id IN (`, `  SELECT l.member_id`, `  FROM loan l JOIN book b ON b.id = l.book_id`, `  WHERE b.type = 'bd'`, `);`],
+  x: [[`WHERE id = (`, `La sous-requête renvoie 2 membres : avec =, MySQL s'arrête sur l'erreur 1242 (Subquery returns more than 1 row).`]],
+  r: `Léa Martin · Hugo Durand`,
+  why: `IN accepte une liste de valeurs ; = n'en accepte qu'une.` },
+{ s: 4, m: 'm10', db: 'bibliotheque', q: `Nombre moyen d'emprunts par membre, parmi les membres qui ont emprunté.`,
+  b: [`SELECT AVG(nb) AS moyenne`, `FROM (`, `  SELECT member_id, COUNT(*) AS nb`, `  FROM loan`, `  GROUP BY member_id`, `) AS t;`],
+  x: [[`);`, `Une table dérivée doit avoir un alias : sans AS t, erreur 1248.`]],
+  r: `2.5000, soit (3 + 2 + 3 + 2) / 4`,
+  why: `AVG(COUNT(*)) est interdit : on compte dans une table dérivée, puis on fait la moyenne à l'extérieur.` },
+{ s: 4, m: 'm10', db: 'bibliotheque', q: `Le ou les livres les plus empruntés, ex æquo compris.`,
+  b: [`SELECT b.title, COUNT(*) AS nb`, `FROM book b JOIN loan l ON l.book_id = b.id`, `GROUP BY b.id, b.title`, `HAVING COUNT(*) = (`, `  SELECT MAX(nb) FROM (SELECT COUNT(*) AS nb FROM loan GROUP BY book_id) AS t`, `);`],
+  x: [[`ORDER BY nb DESC LIMIT 1;`, `LIMIT 1 ne garde qu'un livre alors que 3 sont ex æquo.`]],
+  r: `Les Misérables 2 · Notre-Dame de Paris 2 · Astérix le Gaulois 2`,
+  why: `On compare chaque groupe au maximum calculé à part : tous les ex æquo passent.` },
+{ s: 4, m: 'm10', db: 'bibliotheque', q: `Un seul tableau (nom, prénom, rôle) : les membres puis les auteurs, le tout trié par nom.`,
+  b: [`SELECT last_name, first_name, 'membre' AS role FROM member`, `UNION ALL`, `SELECT last_name, first_name, 'auteur' FROM author`, `ORDER BY last_name;`],
+  x: [[`SELECT last_name, 'auteur' FROM author`, `Les deux SELECT doivent avoir le même nombre de colonnes (erreur 1222).`]],
+  r: `12 lignes, de Bernard (membre) à Zola (auteur). La 3e colonne s'appelle role : les noms de colonnes viennent du premier SELECT.`,
+  why: `UNION empile deux résultats. L'ORDER BY écrit à la fin trie le tout.` },
+{ s: 4, m: 'm10', db: 'ecole', q: `Les autres élèves de la même classe que Chloé.`,
+  b: [`SELECT prenom`, `FROM eleves`, `WHERE classe = (`, `  SELECT classe FROM eleves WHERE prenom = 'Chloé'`, `)`, `AND prenom <> 'Chloé';`],
+  r: `Emma`,
+  why: `La sous-requête renvoie B2, puis la requête externe filtre sur cette valeur.` },
+{ s: 4, m: 'm10', db: 'subways', q: `Pour les lignes 1 et 2 : nombre de stations et total des visiteurs, en une seule requête.`,
+  b: [`SELECT sl.number,`, `  (SELECT COUNT(*) FROM stations_in_lines sil WHERE sil.line_id = sl.id) AS nb_stations,`, `  (SELECT SUM(v.quantity) FROM visitors v WHERE v.line_id = sl.id) AS visiteurs`, `FROM sublines sl`, `WHERE sl.id IN (1, 2);`],
+  r: `1 | 25 | 75084 · 2 | 25 | 171`,
+  why: `Deux LEFT JOIN vers deux tables enfants multiplieraient les lignes (1 877 100 visiteurs au lieu de 75 084). Les sous-requêtes dans le SELECT évitent ce piège.` },
+{ s: 4, m: 'm10', db: 'subways', q: `Tableau « type » / « ligne » : la ligne la plus courte et la ligne la plus longue, en nombre de stations.`,
+  b: [`(SELECT 'ligne la plus courte' AS type, sl.number AS ligne`, ` FROM sublines sl JOIN stations_in_lines sil ON sil.line_id = sl.id`, ` GROUP BY sl.id, sl.number ORDER BY COUNT(*) ASC LIMIT 1)`, `UNION ALL`, `(SELECT 'ligne la plus longue', sl.number`, ` FROM sublines sl JOIN stations_in_lines sil ON sil.line_id = sl.id`, ` GROUP BY sl.id, sl.number ORDER BY COUNT(*) DESC LIMIT 1);`],
+  r: `ligne la plus courte | 3bis · ligne la plus longue | 8`,
+  why: `Les parenthèses donnent à chaque partie son propre ORDER BY et son propre LIMIT. C'est la question 3 de ton TP.` },
+
+// ---- Tronçon 5 : créer la structure ----
+{ s: 5, m: 'm4', db: 'ecole', q: `Repars de zéro : supprime la base ecole si elle existe, recrée-la en utf8mb4, puis sélectionne-la.`,
+  b: [`DROP DATABASE IF EXISTS ecole;`, `CREATE DATABASE ecole CHARACTER SET utf8mb4;`, `USE ecole;`],
+  x: [[`USE DATABASE ecole;`, `La commande est USE ecole; tout court. Ici, MySQL chercherait une base nommée « DATABASE » (erreur 1049).`]],
+  why: `IF EXISTS évite une erreur quand la base n'existe pas encore.` },
+{ s: 5, m: 'm4', db: 'ecole', q: `Crée la table eleves : id auto-incrémenté, prénom obligatoire, classe de 2 caractères obligatoire, note facultative (petit entier positif).`,
+  b: [`CREATE TABLE eleves (`, `  id INT AUTO_INCREMENT PRIMARY KEY,`, `  prenom VARCHAR(50) NOT NULL,`, `  classe CHAR(2) NOT NULL,`, `  note TINYINT UNSIGNED NULL`, `);`],
+  free: [[1, 3]],
+  x: [[`  note TINYINT UNSIGNED NULL,`, `Pas de virgule après la dernière définition : « , ) » est une erreur de syntaxe.`]],
+  why: `Une colonne = nom, type, contraintes. Les lignes qui finissent par une virgule peuvent venir dans n'importe quel ordre ; la dernière n'en a pas.` },
+{ s: 5, m: 'm2', db: 'ecole', q: `Crée la table clubs : nom obligatoire et unique, élève responsable facultatif. Si l'élève est supprimé, le club reste mais n'a plus de responsable.`,
+  b: [`CREATE TABLE clubs (`, `  id INT AUTO_INCREMENT PRIMARY KEY,`, `  nom VARCHAR(50) NOT NULL UNIQUE,`, `  eleve_id INT NULL,`, `  FOREIGN KEY (eleve_id) REFERENCES eleves(id) ON DELETE SET NULL`, `) ENGINE=InnoDB;`],
+  free: [[1, 3]],
+  x: [
+    [`  FOREIGN KEY (eleve_id) REFERENCES eleves(id) ON DELETE CASCADE`, `CASCADE supprimerait le club en même temps que l'élève. L'énoncé veut garder le club : SET NULL.`],
+    [`) ENGINE=MyISAM;`, `MyISAM ignore les clés étrangères : la contrainte ne serait jamais vérifiée.`],
+  ],
+  why: `ON DELETE SET NULL n'est possible que si la colonne accepte NULL.` },
+{ s: 5, m: 'm4', db: 'ecole', q: `Crée la table associative inscription (un élève peut être dans plusieurs clubs, un club a plusieurs élèves), avec la date d'inscription, aujourd'hui par défaut.`,
+  b: [`CREATE TABLE inscription (`, `  eleve_id INT NOT NULL,`, `  club_id INT NOT NULL,`, `  inscrit_le DATE NOT NULL DEFAULT (CURRENT_DATE),`, `  PRIMARY KEY (eleve_id, club_id),`, `  FOREIGN KEY (eleve_id) REFERENCES eleves(id),`, `  FOREIGN KEY (club_id) REFERENCES clubs(id)`, `);`],
+  free: [[1, 5]],
+  x: [[`  PRIMARY KEY (eleve_id),`, `Avec eleve_id seul comme clé primaire, chaque élève ne pourrait s'inscrire qu'à un seul club.`]],
+  why: `Association n-n → table associative dont la clé primaire est composée des deux clés étrangères. MySQL accepte colonnes et contraintes dans n'importe quel ordre.` },
+{ s: 5, m: 'm4', db: 'bibliotheque', q: `Ajoute à member une colonne email facultative et unique, juste après first_name.`,
+  b: [`ALTER TABLE member`, `ADD COLUMN email VARCHAR(255) NULL UNIQUE`, `AFTER first_name;`],
+  x: [
+    [`MODIFY COLUMN email VARCHAR(255) NULL UNIQUE`, `MODIFY change une colonne qui existe déjà. Pour en créer une : ADD.`],
+    [`UPDATE TABLE member`, `UPDATE modifie des données (DML). La structure se change avec ALTER TABLE.`],
+  ],
+  why: `ALTER TABLE + une action : ADD, MODIFY, CHANGE, RENAME COLUMN ou DROP.` },
+{ s: 5, m: 'm4', db: 'ecole', q: `Dans clubs, en une seule requête : renomme la colonne nom en intitule, puis ajoute une colonne budget (décimal, 0 par défaut).`,
+  b: [`ALTER TABLE clubs`, `  RENAME COLUMN nom TO intitule,`, `  ADD COLUMN budget DECIMAL(8,2) NOT NULL DEFAULT 0;`],
+  x: [[`  RENAME nom TO intitule,`, `RENAME sans COLUMN renomme la TABLE : ici, erreur de syntaxe.`]],
+  why: `Plusieurs actions dans un même ALTER TABLE se séparent par des virgules.` },
+{ s: 5, m: 'm2', db: 'ecole', q: `Ajoute une contrainte nommée chk_note (note entre 0 et 20), puis un index sur la colonne classe.`,
+  b: [`ALTER TABLE eleves`, `ADD CONSTRAINT chk_note CHECK (note BETWEEN 0 AND 20);`, `CREATE INDEX idx_eleves_classe`, `ON eleves (classe);`],
+  x: [[`ADD CONSTRAINT chk_note CHECK note BETWEEN 0 AND 20;`, `La condition d'un CHECK s'écrit entre parenthèses (erreur 1064 sinon).`]],
+  why: `CHECK refuse les valeurs hors règle (erreur 3819). L'index accélère les recherches sur classe (WHERE, JOIN, ORDER BY).` },
+{ s: 5, m: 'm2', db: 'ecole', q: `Supprime les 3 tables de l'école (eleves, clubs, inscription) sans erreur de clé étrangère.`,
+  b: [`DROP TABLE IF EXISTS inscription;`, `DROP TABLE IF EXISTS clubs;`, `DROP TABLE IF EXISTS eleves;`],
+  x: [[`TRUNCATE TABLE eleves;`, `TRUNCATE vide la table sans la supprimer, et il échoue si une clé étrangère la référence (erreur 1701).`]],
+  why: `On supprime dans l'ordre inverse de la création : d'abord les tables qui portent les clés étrangères. Sinon : erreur 3730.` },
+
+// ---- Tronçon 6 : modifier les données et administrer ----
+{ s: 6, m: 'm5', db: 'bibliotheque', q: `Ajoute l'autrice Annie Ernaux à la table author.`,
+  b: [`INSERT INTO author`, `(last_name, first_name)`, `VALUES ('Ernaux', 'Annie');`],
+  x: [[`VALUES ('Annie', 'Ernaux');`, `Les valeurs suivent l'ordre de la liste de colonnes : le prénom finirait dans last_name.`]],
+  r: `1 ligne insérée, avec l'id 7 (AUTO_INCREMENT).`,
+  why: `On nomme les colonnes ; l'id auto-incrémenté se remplit tout seul.` },
+{ s: 6, m: 'm5', db: 'ecole', q: `Ajoute deux clubs en une seule requête : Cinéma (responsable : élève 4) et Robotique (sans responsable).`,
+  b: [`INSERT INTO clubs (nom, eleve_id)`, `VALUES ('Cinéma', 4),`, `       ('Robotique', NULL);`],
+  x: [[`       ('Robotique', '');`, `Une chaîne vide n'est pas NULL : sur une colonne INT, MySQL refuse '' (erreur 1366).`]],
+  r: `2 lignes insérées.`,
+  why: `Un seul INSERT, plusieurs lignes de valeurs séparées par des virgules.` },
+{ s: 6, m: 'm5', db: 'bibliotheque', q: `Augmente de 10 % le tarif des abonnements payants.`,
+  b: [`UPDATE subscription`, `SET annual_rate = annual_rate * 1.10`, `WHERE annual_rate > 0;`],
+  x: [[`SET annual_rate = annual_rate + 10%`, `% n'est pas un pourcentage en SQL (c'est le modulo) : erreur de syntaxe. +10 % s'écrit × 1.10.`]],
+  r: `2 lignes modifiées : Standard 27.50 · Premium 49.50`,
+  why: `Sans WHERE, UPDATE modifie TOUTES les lignes de la table.` },
+{ s: 6, m: 'm5', db: 'bibliotheque', q: `Germinal (livre 7) est rendu aujourd'hui : clôture l'emprunt, puis remets le livre en disponible.`,
+  b: [`UPDATE loan`, `SET return_date = CURDATE()`, `WHERE book_id = 7 AND return_date IS NULL;`, `UPDATE book`, `SET availability = 'disponible'`, `WHERE id = 7;`],
+  r: `1 ligne modifiée par requête.`,
+  why: `Un UPDATE ne modifie qu'une table : deux tables, deux requêtes.` },
+{ s: 6, m: 'm5', db: 'bibliotheque', q: `Supprime les emprunts rendus avant le 1er août 2026, en vérifiant d'abord ce que tu vas supprimer.`,
+  b: [`SELECT * FROM loan`, `WHERE return_date < '2026-08-01';`, `DELETE FROM loan`, `WHERE return_date < '2026-08-01';`],
+  x: [[`DELETE * FROM loan`, `DELETE ne prend pas de liste de colonnes : il supprime des lignes entières (erreur 1064).`]],
+  r: `2 emprunts : le 8 (rendu le 20/07) et le 10 (rendu le 03/07).`,
+  why: `Réflexe pro : on teste le WHERE dans un SELECT, puis on recopie le même WHERE dans le DELETE.` },
+{ s: 6, m: 'm5', db: 'bibliotheque', q: `Nouveau membre (Le Corre Ioulian, abonnement Premium n°3) qui emprunte tout de suite le livre 2 pour 21 jours.`,
+  b: [`INSERT INTO member (last_name, first_name, subscription_id)`, `VALUES ('Le Corre', 'Ioulian', 3);`, `INSERT INTO loan (loan_date, due_date, member_id, book_id)`, `VALUES (CURDATE(), DATE_ADD(CURDATE(), INTERVAL 21 DAY), LAST_INSERT_ID(), 2);`],
+  x: [[`VALUES (CURDATE(), CURDATE() + 21, LAST_INSERT_ID(), 2);`, `CURDATE() + 21 additionne des nombres (20261026 + 21 = 20261047) : date invalide, erreur 1292. On ajoute des jours avec DATE_ADD.`]],
+  r: `LAST_INSERT_ID() vaut l'id du membre qu'on vient de créer (7).`,
+  why: `On insère d'abord le parent (member), puis l'enfant (loan) qui pointe vers lui.` },
+{ s: 6, m: 'm11', db: 'bibliotheque', q: `Crée une vue current_loans (emprunts en cours : id, nom du membre, titre, retour prévu), puis interroge-la.`,
+  b: [`CREATE VIEW current_loans AS`, `SELECT l.id, m.last_name, b.title, l.due_date`, `FROM loan l`, `JOIN member m ON m.id = l.member_id`, `JOIN book b ON b.id = l.book_id`, `WHERE l.return_date IS NULL;`, `SELECT * FROM current_loans;`],
+  free: [[3, 4]],
+  x: [[`CREATE TABLE current_loans AS`, `CREATE TABLE … AS copie les données une fois pour toutes. Une vue est une requête enregistrée : elle reste à jour.`]],
+  r: `3 lignes : emprunts 2, 4 et 7.`,
+  why: `Une vue s'interroge exactement comme une table.` },
+{ s: 6, m: 'm11', db: 'bibliotheque', q: `Crée l'utilisateur biblio_app (connexion locale) qui peut seulement lire et écrire les données de bibliotheque, puis affiche ses droits.`,
+  b: [`CREATE USER 'biblio_app'@'localhost'`, `IDENTIFIED BY 'Un-Long-Mot-De-Passe!';`, `GRANT SELECT, INSERT, UPDATE, DELETE`, `ON bibliotheque.*`, `TO 'biblio_app'@'localhost';`, `SHOW GRANTS FOR 'biblio_app'@'localhost';`],
+  x: [[`GRANT ALL PRIVILEGES`, `ALL donnerait aussi DROP, ALTER… : c'est contraire au principe du moindre privilège.`]],
+  why: `CREATE USER crée le compte, GRANT … ON base.* TO compte lui donne des droits.` },
+{ s: 6, m: 'm11', db: 'bibliotheque', q: `Sauvegarde la base bibliotheque dans un fichier, puis restaure-la dans une nouvelle base biblio_test.`,
+  b: [`mysqldump -u root -p bibliotheque > sauvegarde.sql`, `mysql -u root -p`, `CREATE DATABASE biblio_test;`, `USE biblio_test;`, `SOURCE sauvegarde.sql;`],
+  x: [[`SOURCE bibliotheque > sauvegarde.sql;`, `SOURCE exécute un fichier .sql dans le CLI : il ne sauvegarde rien.`]],
+  why: `mysqldump (dans le terminal) écrit le script, SOURCE (dans mysql>) le rejoue. Pour une seule base, le dump ne contient pas de CREATE DATABASE : on crée et on sélectionne la base avant.` },
+];
+
 // ====================================================================
 // Exercices sur PC (MySQL) + planning sur 8 jours.
 // Tous les "Résultat attendu" ont été vérifiés sur les données réelles.
@@ -1479,7 +1840,7 @@ const PRACTICE = [
   id: 'setup', title: 'Démarrage', when: 'J1 · 15 min',
   intro: `Prépare tes deux bases d'entraînement. Copie <code>bibliotheque.sql</code> (livré avec cette page) dans <code>C:/Users/lciou/Desktop/SQL/revision/</code>.`,
   items: [
-    { id: 'p-setup-1', lvl: 1, q: `Ouvre un terminal et connecte-toi au CLI MySQL.`, sol: `mysql -u root -p`, expect: `L'invite mysql> s'affiche. Si « mysql n'est pas reconnu » : ajoute C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin au PATH.` },
+    { id: 'p-setup-1', lvl: 1, q: `Ouvre un terminal et connecte-toi au CLI MySQL.`, sol: `mysql -u root -p`, expect: `L'invite mysql> s'affiche. Si « mysql n'est pas reconnu » : ajoute C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin au PATH.` },
     { id: 'p-setup-2', lvl: 1, q: `Importe le métro et la bibliothèque.`, sol: `SOURCE C:/Users/lciou/Desktop/SQL/exo_sql/subways.sql;\nSOURCE C:/Users/lciou/Desktop/SQL/revision/bibliotheque.sql;`, expect: `La 2e commande affiche : subscription 3, member 6, author 6, book 8, loan 10.` },
     { id: 'p-setup-3', lvl: 1, q: `Explore subways : liste les tables, puis la structure de chacune.`, sol: `USE subways;\nSHOW TABLES;\nDESCRIBE stations;\nDESCRIBE stations_in_lines;\nDESCRIBE sublines;\nDESCRIBE visitors;\nSHOW CREATE TABLE stations;`, expect: `4 tables. SHOW CREATE TABLE montre ENGINE=MyISAM : aucune FK.` },
   ]
@@ -1490,17 +1851,17 @@ const PRACTICE = [
   items: [
     { id: 'p-tp-1', lvl: 1, q: `Liste des lignes avec leur nombre de stations respectif (toutes les lignes).`, hint: `LEFT JOIN + COUNT d'une colonne de droite.`, sol: `SELECT sl.number, COUNT(sil.id) AS nb_stations\nFROM sublines sl\nLEFT JOIN stations_in_lines sil ON sil.line_id = sl.id\nGROUP BY sl.id, sl.number\nORDER BY sl.id;`, expect: `20 lignes. 15, 16, 17, 18 → 0. La 8 → 40.` },
     { id: 'p-tp-2', lvl: 2, q: `Nombre moyen de stations par ligne.`, hint: `Table dérivée + AVG, ou division de deux sous-requêtes scalaires.`, sol: `SELECT AVG(nb) AS moyenne\nFROM (\n  SELECT COUNT(sil.id) AS nb\n  FROM sublines sl\n  LEFT JOIN stations_in_lines sil ON sil.line_id = sl.id\n  GROUP BY sl.id\n) AS t;`, expect: `19.5500 (24.44 si on exclut les 4 lignes vides avec un JOIN).` },
-    { id: 'p-tp-3', lvl: 3, q: `Tableau à 2 colonnes « type » / « nom de la ligne » : ligne la plus courte et ligne la plus longue.`, hint: `Deux SELECT entre parenthèses (ORDER BY COUNT(*) + LIMIT 1) réunis par UNION ALL.`, sol: `(SELECT 'ligne la plus courte' AS type, sl.number AS 'nom de la ligne'\n FROM sublines sl JOIN stations_in_lines sil ON sil.line_id = sl.id\n GROUP BY sl.id, sl.number ORDER BY COUNT(*) ASC LIMIT 1)\nUNION ALL\n(SELECT 'ligne la plus longue', sl.number\n FROM sublines sl JOIN stations_in_lines sil ON sil.line_id = sl.id\n GROUP BY sl.id, sl.number ORDER BY COUNT(*) DESC LIMIT 1);`, expect: `ligne la plus courte | 3bis\nligne la plus longue | 8` },
-    { id: 'p-tp-4', lvl: 1, q: `Toutes les lignes disponibles à la station « Bastille ».`, sol: `SELECT sl.number AS ligne\nFROM stations s\nJOIN stations_in_lines sil ON sil.station_id = s.id\nJOIN sublines sl ON sl.id = sil.line_id\nWHERE s.name = 'Bastille';`, expect: `1, 5, 8` },
-    { id: 'p-tp-5', lvl: 3, q: `Toutes les stations connectées directement à « Louis Blanc » (même ligne, sans correspondance).`, hint: `Auto-jointure : stations_in_lines a (lignes de Louis Blanc) JOIN stations_in_lines b ON b.line_id = a.line_id.`, sol: `SELECT DISTINCT s2.name\nFROM stations s1\nJOIN stations_in_lines a ON a.station_id = s1.id\nJOIN stations_in_lines b ON b.line_id = a.line_id\nJOIN stations s2 ON s2.id = b.station_id\nWHERE s1.name = 'Louis Blanc' AND s2.id <> s1.id\nORDER BY s2.name;`, expect: `43 stations (lignes 7 et 7bis), d'Alma - Marceau aux 3 stations Villejuif.` },
-    { id: 'p-tp-6', lvl: 3, q: `Toutes les stations atteignables avec zéro ou une correspondance depuis « Nationale ».`, hint: `Enchaîne 4 alias de stations_in_lines : lignes de départ → stations → lignes en correspondance → stations d'arrivée.`, sol: `SELECT DISTINCT dest.name\nFROM stations start\nJOIN stations_in_lines l1      ON l1.station_id = start.id\nJOIN stations_in_lines hop     ON hop.line_id = l1.line_id\nJOIN stations_in_lines l2      ON l2.station_id = hop.station_id\nJOIN stations_in_lines arrival ON arrival.line_id = l2.line_id\nJOIN stations dest             ON dest.id = arrival.station_id\nWHERE start.name = 'Nationale' AND dest.id <> start.id\nORDER BY dest.name;`, expect: `268 stations.` },
+    { id: 'p-tp-3', lvl: 3, q: `Tableau à 2 colonnes « type » / « nom de la ligne » : ligne la plus courte et ligne la plus longue.`, hint: `Deux SELECT entre parenthèses (ORDER BY COUNT(*) + LIMIT 1) réunis par UNION ALL.`, sol: `(SELECT 'ligne la plus courte' AS type, sl.number AS 'nom de la ligne'\n FROM sublines sl JOIN stations_in_lines sil ON sil.line_id = sl.id\n GROUP BY sl.id, sl.number ORDER BY COUNT(*) ASC LIMIT 1)\nUNION ALL\n(SELECT 'ligne la plus longue', sl.number\n FROM sublines sl JOIN stations_in_lines sil ON sil.line_id = sl.id\n GROUP BY sl.id, sl.number ORDER BY COUNT(*) DESC LIMIT 1);`, expect: `ligne la plus courte | 3bis\nligne la plus longue | 8` },
+    { id: 'p-tp-4', lvl: 1, q: `Toutes les lignes disponibles à la station « Bastille ».`, sol: `SELECT sl.number AS ligne\nFROM stations s\nJOIN stations_in_lines sil ON sil.station_id = s.id\nJOIN sublines sl ON sl.id = sil.line_id\nWHERE s.name = 'Bastille';`, expect: `1, 5, 8` },
+    { id: 'p-tp-5', lvl: 3, q: `Toutes les stations connectées directement à « Louis Blanc » (même ligne, sans correspondance).`, hint: `Auto-jointure : stations_in_lines a (lignes de Louis Blanc) JOIN stations_in_lines b ON b.line_id = a.line_id.`, sol: `SELECT DISTINCT s2.name\nFROM stations s1\nJOIN stations_in_lines a ON a.station_id = s1.id\nJOIN stations_in_lines b ON b.line_id = a.line_id\nJOIN stations s2 ON s2.id = b.station_id\nWHERE s1.name = 'Louis Blanc' AND s2.id <> s1.id\nORDER BY s2.name;`, expect: `43 stations (lignes 7 et 7bis), d'Alma - Marceau aux 3 stations Villejuif.` },
+    { id: 'p-tp-6', lvl: 3, q: `Toutes les stations atteignables avec zéro ou une correspondance depuis « Nationale ».`, hint: `Enchaîne 4 alias de stations_in_lines : lignes de départ → stations → lignes en correspondance → stations d'arrivée.`, sol: `SELECT DISTINCT dest.name\nFROM stations start\nJOIN stations_in_lines l1      ON l1.station_id = start.id\nJOIN stations_in_lines hop     ON hop.line_id = l1.line_id\nJOIN stations_in_lines l2      ON l2.station_id = hop.station_id\nJOIN stations_in_lines arrival ON arrival.line_id = l2.line_id\nJOIN stations dest             ON dest.id = arrival.station_id\nWHERE start.name = 'Nationale' AND dest.id <> start.id\nORDER BY dest.name;`, expect: `268 stations.` },
   ]
 },
 {
   id: 'metro', title: 'Métro : bonus', when: 'J5–J7', db: 'subways',
   items: [
     { id: 'p-m-1', lvl: 1, q: `Nombre total de stations.`, sol: `SELECT COUNT(*) FROM stations;`, expect: `308` },
-    { id: 'p-m-2', lvl: 1, q: `Stations dont le nom contient « Porte », triées par ordre alphabétique.`, sol: `SELECT name FROM stations WHERE name LIKE '%Porte%' ORDER BY name;`, expect: `24 stations (dont Saint-Denis - Porte de Paris).` },
+    { id: 'p-m-2', lvl: 1, q: `Stations dont le nom contient « Porte », triées par ordre alphabétique.`, sol: `SELECT name FROM stations WHERE name LIKE '%Porte%' ORDER BY name;`, expect: `24 stations (dont Saint-Denis - Porte de Paris).` },
     { id: 'p-m-3', lvl: 2, q: `Stations de correspondance desservies par au moins 3 lignes, avec leur nombre de lignes, de la plus desservie à la moins desservie.`, hint: `GROUP BY station + HAVING.`, sol: `SELECT s.name, COUNT(*) AS nb_lignes\nFROM stations s\nJOIN stations_in_lines sil ON sil.station_id = s.id\nGROUP BY s.id, s.name\nHAVING COUNT(*) >= 3\nORDER BY nb_lignes DESC, s.name;`, expect: `16 stations. En tête : Châtelet 5, République 5, puis Montparnasse, Nation, Saint-Lazare avec 4.` },
     { id: 'p-m-4', lvl: 2, q: `Lignes qui n'ont aucune station (anti-jointure).`, sol: `SELECT sl.number\nFROM sublines sl\nLEFT JOIN stations_in_lines sil ON sil.line_id = sl.id\nWHERE sil.id IS NULL;`, expect: `15, 16, 17, 18` },
     { id: 'p-m-5', lvl: 2, q: `Couleurs partagées par plusieurs lignes, avec la liste des lignes concernées.`, hint: `GROUP BY color, GROUP_CONCAT, HAVING.`, sol: `SELECT color, GROUP_CONCAT(number ORDER BY id SEPARATOR ', ') AS lignes\nFROM sublines\nGROUP BY color\nHAVING COUNT(*) > 1;`, expect: `#83C491 → 6, 7bis · #98D4E2 → 3bis, 13 · #D5C900 → 9, 17 · #F3A4BA → 7, 16` },
@@ -1548,7 +1909,7 @@ const PRACTICE = [
     { id: 'p-d-6', lvl: 2, q: `Supprime le membre Noah Petit (id 4). Que deviennent ses emprunts ?`, sol: `SELECT * FROM loan WHERE member_id = 4;   -- 2 emprunts\nDELETE FROM member WHERE id = 4;\nSELECT * FROM loan WHERE member_id = 4;   -- 0 : ON DELETE CASCADE`, expect: `Ses 2 emprunts sont supprimés automatiquement (ON DELETE CASCADE sur loan.member_id).` },
     { id: 'p-d-7', lvl: 2, q: `Insère un emprunt pour un livre qui n'existe pas (book_id 99). Quelle erreur ?`, sol: `INSERT INTO loan (loan_date, due_date, member_id, book_id)\nVALUES (CURDATE(), DATE_ADD(CURDATE(), INTERVAL 21 DAY), 1, 99);`, expect: `ERROR 1452 : Cannot add or update a child row (FK book_id).` },
     { id: 'p-d-8', lvl: 2, q: `Insère un emprunt dont la date de retour prévue est AVANT la date d'emprunt. Que se passe-t-il ?`, sol: `INSERT INTO loan (loan_date, due_date, member_id, book_id)\nVALUES ('2026-10-20', '2026-10-01', 1, 2);`, expect: `ERROR 3819 : Check constraint is violated (CHECK due_date >= loan_date).` },
-    { id: 'p-d-9', lvl: 2, q: `Crée une vue current_loans (emprunts en cours avec nom du membre et titre), puis interroge-la.`, sol: `CREATE VIEW current_loans AS\nSELECT l.id, m.last_name, b.title, l.due_date\nFROM loan l\nJOIN member m ON m.id = l.member_id\nJOIN book b ON b.id = l.book_id\nWHERE l.return_date IS NULL;\n\nSELECT * FROM current_loans;`, expect: `Mêmes lignes que l'exercice « Emprunts en cours ».` },
+    { id: 'p-d-9', lvl: 2, q: `Crée une vue current_loans (emprunts en cours avec nom du membre et titre), puis interroge-la.`, sol: `CREATE VIEW current_loans AS\nSELECT l.id, m.last_name, b.title, l.due_date\nFROM loan l\nJOIN member m ON m.id = l.member_id\nJOIN book b ON b.id = l.book_id\nWHERE l.return_date IS NULL;\n\nSELECT * FROM current_loans;`, expect: `Mêmes lignes que l'exercice « Emprunts en cours ».` },
     { id: 'p-d-10', lvl: 3, q: `Crée un utilisateur biblio_app qui peut seulement lire et écrire les données (pas modifier la structure), puis vérifie ses droits.`, sol: `CREATE USER 'biblio_app'@'localhost' IDENTIFIED BY 'Choisis-Un-Long-Mot-De-Passe!';\nGRANT SELECT, INSERT, UPDATE, DELETE ON bibliotheque.* TO 'biblio_app'@'localhost';\nSHOW GRANTS FOR 'biblio_app'@'localhost';`, expect: `Pas de CREATE, DROP ou ALTER : principe du moindre privilège.` },
   ]
 },
@@ -1663,6 +2024,7 @@ const TF = TF_RAW.map(([m, s, v, why], i) => ({ id: 't' + i, kind: 'tf', m, s, v
 const PREDICT = PREDICT_RAW.map(([m, code, c, why], i) => ({ id: 'p' + i, kind: 'predict', m, code, c, why }));
 const BUGS = BUGS_RAW.map(([m, lines, a, why], i) => ({ id: 'b' + i, kind: 'bug', m, lines, a, why }));
 const ORDER = ORDER_RAW.map((o, i) => Object.assign({ id: 'o' + i, kind: 'order' }, o));
+const BUILD = BUILD_RAW.map((o, i) => Object.assign({ id: 'rq' + i, kind: 'build', n: i + 1 }, o));
 const ALL_Q = [...QCM, ...TF, ...PREDICT, ...BUGS];
 const KIND_LABEL = { mc: 'QCM', tf: 'Vrai ou faux', predict: 'Prédis le résultat', bug: 'Trouve l\'erreur', order: 'Remets dans l\'ordre' };
 const lineBadge = (m, extra = '') => `<span class="lb ${extra}" style="--c:${m.color};--ci:${m.ink}" aria-label="Ligne ${m.n}">${m.n}</span>`;
@@ -1671,7 +2033,7 @@ const lineBadge = (m, extra = '') => `<span class="lb ${extra}" style="--c:${m.c
 // Progression (localStorage protégé : la page marche même s'il est bloqué)
 // ===================================================================
 const STORE_KEY = 'ligne-sql-v1';
-const DEFAULT_STATE = { xp: 0, read: {}, readAward: {}, box: {}, notes: {}, plan: {}, pc: {}, wrong: {}, stats: {}, days: {}, filter: [], exam: '2026-10-27', best: { sprint: 0, exam: null }, theme: '' };
+const DEFAULT_STATE = { xp: 0, read: {}, readAward: {}, box: {}, notes: {}, plan: {}, pc: {}, build: {}, wrong: {}, stats: {}, days: {}, filter: [], exam: '2026-10-27', best: { sprint: 0, exam: null }, theme: '' };
 const freshState = () => JSON.parse(JSON.stringify(DEFAULT_STATE));
 let state = loadState();
 
@@ -1805,6 +2167,7 @@ function runGo(go) {
     case 'predict': return startPredict(mods);
     case 'bugs': return startBugs(mods);
     case 'order': return startOrder(mods);
+    case 'build': return openBuild(mods);
     case 'sprint': return startSprint(mods);
     case 'exam': return startExam();
     case 'wrong': return startWrong();
@@ -1832,7 +2195,7 @@ function renderPlan() {
   } else if (cur === 0) {
     today = `<div class="today"><p>Le planning démarre le <strong>${fmtDay(dayDate(1))}</strong>. Rien ne t'empêche de commencer J1 maintenant.</p><div class="row"><button type="button" class="btn small" data-go="read:m1">Commencer la ligne 1</button></div></div>`;
   } else {
-    today = `<div class="today"><p><strong>${left === 0 ? 'C\'est le jour J.' : 'Le contrôle est passé.'}</strong> Pas de nouvelle notion : relis le mémo et tes cartes « à revoir ».</p><div class="row"><button type="button" class="btn small" data-go="memo:">Mémo express</button><button type="button" class="btn small" data-go="cards:due">Cartes à revoir</button></div></div>`;
+    today = `<div class="today"><p><strong>${left === 0 ? 'C\'est le jour J.' : 'Le contrôle est passé.'}</strong> Pas de nouvelle notion : relis le mémo et tes cartes « à revoir ».</p><div class="row"><button type="button" class="btn small" data-go="memo:">Mémo express</button><button type="button" class="btn small" data-go="cards:due">Cartes à revoir</button></div></div>`;
   }
 
   const stops = PLAN.map((p) => {
@@ -1872,7 +2235,7 @@ function renderPlan() {
       ${stops}
       <li class="stop terminus"><span class="stop-dot" aria-hidden="true"></span>
         <div class="stop-card"><div class="stop-title"><h3>Terminus · Contrôle</h3><span class="muted">${examLabel}</span></div>
-        <p>La veille : cartes « à revoir » et mémo, puis dors. Le matin : 20 minutes de mémo, pas de nouvelle notion. Pendant le contrôle : écris d'abord le FROM et les JOIN, puis le WHERE, et le SELECT en dernier.</p>
+        <p>La veille : cartes « à revoir » et mémo, puis dors. Le matin : 20 minutes de mémo, pas de nouvelle notion. Pendant le contrôle : écris d'abord le FROM et les JOIN, puis le WHERE, et le SELECT en dernier.</p>
         <div class="row"><button type="button" class="btn small" data-go="memo:">Mémo express</button></div></div>
       </li>
     </ol>
@@ -1880,8 +2243,8 @@ function renderPlan() {
       <h2 style="font-size:18px">Réviser sans réseau</h2>
       <p>Cours, jeux et exercices tiennent dans une seule page, gardée en cache après la première visite.</p>
       <ol>
-        <li><strong>iPhone</strong> : ouvre <code>ioulianlc.github.io/revision-sql</code> dans <strong>Safari</strong> avec du réseau, puis Partager → « Sur l'écran d'accueil ». Lance-la une fois depuis l'icône : ensuite, elle marche en mode avion.</li>
-        <li><strong>Android</strong> : même adresse dans Chrome, menu → « Installer l'application ».</li>
+        <li><strong>iPhone</strong> : ouvre <code>ioulianlc.github.io/revision-sql</code> dans <strong>Safari</strong> avec du réseau, puis Partager → « Sur l'écran d'accueil ». Lance-la une fois depuis l'icône : ensuite, elle marche en mode avion.</li>
+        <li><strong>Android</strong> : même adresse dans Chrome, menu → « Installer l'application ».</li>
         <li>Ta progression est enregistrée sur chaque appareil. Le téléphone et le PC ont chacun la leur.</li>
       </ol>
     </div>`;
@@ -2047,7 +2410,7 @@ function renderCartes(opts = {}) {
     <div class="boxes" aria-label="Répartition des cartes par boîte">
       ${['Ratées', 'Boîte 1', 'Boîte 2', 'Boîte 3', 'Maîtrisées'].map((l, k) => `<div class="box"><b>${counts[k]}</b>${l}</div>`).join('')}
     </div>
-    <p class="muted" style="font-size:14px">« Je savais » fait monter la carte d'une boîte, « À revoir » la renvoie à zéro. Le paquet « À revoir » contient les cartes ratées et celles des lignes que tu as lues.</p>`;
+    <p class="muted" style="font-size:14px">« Je savais » fait monter la carte d'une boîte, « À revoir » la renvoie à zéro. Le paquet « À revoir » contient les cartes ratées et celles des lignes que tu as lues.</p>`;
 
   if (!deck.cards.length) {
     el.innerHTML = head + `<div class="recap"><p><strong>Rien à revoir pour l'instant.</strong> Lis une ligne du cours ou choisis un paquet dans la liste.</p><div class="row"><button type="button" class="btn primary" data-go="cards:all">Toutes les cartes</button></div></div>` + legend;
@@ -2108,7 +2471,7 @@ function renderJeux() {
   const sel = state.filter || [];
   const wrongN = wrongItems().length;
   el.innerHTML = `
-    <div class="view-head"><p class="eyebrow">S'entraîner</p><h1 id="h-jeux">Jeux</h1><p class="muted">Choisis les lignes à inclure, puis un jeu. Chaque erreur est notée et revient dans « Mes erreurs ».</p></div>
+    <div class="view-head"><p class="eyebrow">S'entraîner</p><h1 id="h-jeux">Jeux</h1><p class="muted">Choisis les lignes à inclure, puis un jeu. Chaque erreur est notée et revient dans « Mes erreurs ».</p></div>
     <div class="filter">
       <span class="zone-label">Lignes incluses</span>
       <div class="chips">
@@ -2117,10 +2480,11 @@ function renderJeux() {
       </div>
     </div>
     <div class="games">
+      <button type="button" class="game feature" data-play="build"><span class="bd-stripe" aria-hidden="true">${BUILD_SECTIONS.map((sec) => `<i style="background:${MOD[sec.m].color}"></i>`).join('')}</span><span class="tag">${BUILD.length} puzzles · ${buildEarned()}/${BUILD_MAX} ★</span><span class="t">Reconstruis la requête</span><span class="s">Le parcours complet en 6 tronçons, du SELECT au GRANT : remets les blocs dans l'ordre et écarte les intrus.</span></button>
       <button type="button" class="game" data-play="quiz"><span class="tag">10 questions</span><span class="t">Quiz express</span><span class="s">QCM et vrai/faux, explication après chaque réponse.</span></button>
       <button type="button" class="game" data-play="predict"><span class="tag">8 requêtes</span><span class="t">Prédis le résultat</span><span class="s">Deux mini-tables, une requête : que renvoie-t-elle ?</span></button>
       <button type="button" class="game" data-play="bugs"><span class="tag">6 requêtes</span><span class="t">Trouve l'erreur</span><span class="s">Repère la ligne qui plante ou qui donne un faux résultat.</span></button>
-      <button type="button" class="game" data-play="order"><span class="tag">5 puzzles</span><span class="t">Remets dans l'ordre</span><span class="s">Reconstruis une requête bloc par bloc.</span></button>
+      <button type="button" class="game" data-play="order"><span class="tag">5 puzzles</span><span class="t">Remets dans l'ordre</span><span class="s">Ordre des clauses, étapes de conception, ordre de création des tables.</span></button>
       <button type="button" class="game" data-play="sprint"><span class="tag">60 secondes · record ${state.best.sprint}</span><span class="t">Sprint Vrai / Faux</span><span class="s">Le plus de bonnes réponses possible. Idéal entre deux stations.</span></button>
       <button type="button" class="game" data-play="wrong"><span class="tag">${wrongN} question(s)</span><span class="t">Mes erreurs</span><span class="s">Seulement ce que tu as raté. Une bonne réponse la retire de la liste.</span></button>
       <button type="button" class="game wide" data-play="exam"><span class="tag">20 questions · 25 min · record ${state.best.exam === null ? '—' : state.best.exam + ' %'}</span><span class="t">Examen blanc</span><span class="s">Toutes les lignes, correction seulement à la fin, comme le jour J.</span></button>
@@ -2456,6 +2820,208 @@ function startOrder(mods) {
     body.innerHTML = `<p class="eyebrow">Terminé</p><div class="score-big">${score}/${items.length}</div><p>${verdict(Math.round((100 * score) / items.length))}</p>
       <div class="row"><button type="button" class="btn primary" id="ord-again">Rejouer</button><button type="button" class="btn" data-close>Fermer</button></div>`;
     $('#ord-again', body).addEventListener('click', () => startOrder(mods));
+  }
+
+  render();
+}
+
+// -------- Reconstruis la requête --------
+const BUILD_MAX = 3 * BUILD.length;
+const DB_LABEL = { ecole: 'école (eleves, clubs)', bibliotheque: 'bibliotheque', subways: 'subways' };
+const starText = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
+const starsLabel = (n) => n + ' étoile' + (n > 1 ? 's' : '') + ' sur 3';
+function buildEarned() { return BUILD.reduce((acc, p) => acc + (state.build[p.id] || 0), 0); }
+const buildToRedo = () => BUILD.filter((p) => p.id in state.build && state.build[p.id] < 3);
+// Puzzle conseillé : le premier jamais joué, sinon le premier sans 3 étoiles
+function buildNextIndex() {
+  const fresh = BUILD.findIndex((p) => !(p.id in state.build));
+  if (fresh >= 0) return fresh;
+  const weak = BUILD.findIndex((p) => state.build[p.id] < 3);
+  return weak >= 0 ? weak : 0;
+}
+function schemaHTML(db) {
+  if (db === 'ecole') return miniTablesHTML();
+  return `<ul class="bd-schema">${DB_SCHEMAS[db].map(([t, cols]) => `<li><code>${t}</code> (${esc(cols)})</li>`).join('')}</ul>`;
+}
+
+// Carte du parcours : 6 tronçons, une station par puzzle
+function openBuild(mods) {
+  openStage('Reconstruis la requête');
+  const body = stageBody();
+  const earned = buildEarned();
+  const next = buildNextIndex();
+  const redo = buildToRedo();
+  const started = BUILD.some((p) => p.id in state.build);
+  setProgress(earned / BUILD_MAX);
+  setMeta(earned + ' / ' + BUILD_MAX + ' ★');
+  body.innerHTML = `
+    <p class="q">Reconstruis chaque requête en touchant les blocs dans l'ordre. Dans la plupart des puzzles, des blocs intrus se glissent dans le lot : laisse-les de côté.</p>
+    <p class="muted">3 ★ du premier coup · −1 ★ par indice ou par vérification ratée · 0 ★ si tu regardes la solution.</p>
+    <div class="row">
+      <button type="button" class="btn primary" id="bd-continue">${started ? 'Continuer' : 'Commencer'} : puzzle ${next + 1}</button>
+      <button type="button" class="btn" id="bd-random">8 au hasard${mods && mods.length ? ' (lignes choisies)' : ''}</button>
+      <button type="button" class="btn" id="bd-redo"${redo.length ? '' : ' disabled'}>À revoir (${redo.length})</button>
+    </div>
+    ${BUILD_SECTIONS.map((sec) => {
+      const list = BUILD.filter((p) => p.s === sec.s);
+      const m = MOD[sec.m];
+      const got = list.reduce((acc, p) => acc + (state.build[p.id] || 0), 0);
+      return `<section class="bd-sec" style="--c:${m.color};--ci:${m.ink}" aria-labelledby="bd-s${sec.s}">
+        <h3 id="bd-s${sec.s}"><span class="lb" aria-hidden="true">${sec.s}</span>${esc(sec.title)}<span class="bd-got">${got}/${3 * list.length} ★</span></h3>
+        <ol class="bd-stops">${list.map((p) => {
+          const st = state.build[p.id];
+          const played = st !== undefined;
+          return `<li><button type="button" class="bd-stop${played ? ' played' : ''}${p.n - 1 === next ? ' next' : ''}" data-bd="${p.n - 1}"><b aria-hidden="true">${p.n}</b><span class="stars" aria-hidden="true">${played ? starText(st) : ''}</span><span class="sr">Puzzle ${p.n}, ${played ? starsLabel(st) : 'pas encore joué'}</span></button></li>`;
+        }).join('')}</ol>
+      </section>`;
+    }).join('')}`;
+  $('#bd-continue', body).addEventListener('click', () => playBuild(BUILD.slice(next), 'path', mods));
+  $('#bd-random', body).addEventListener('click', () => playBuild(pick(filterMods(BUILD, mods), 8), 'series', mods));
+  if (redo.length) $('#bd-redo', body).addEventListener('click', () => playBuild(redo, 'series', mods));
+  $$('[data-bd]', body).forEach((b) => b.addEventListener('click', () => playBuild(BUILD.slice(Number(b.dataset.bd)), 'path', mods)));
+}
+
+// mode 'path' : on enchaîne les puzzles dans l'ordre du parcours ; 'series' : score à la fin
+function playBuild(queue, mode, mods) {
+  if (!queue.length) return stageMessage('Reconstruis la requête', '<p>Aucun puzzle pour cette sélection.</p>');
+  openStage('Reconstruis la requête');
+  const body = stageBody();
+  const results = [];
+  let i = 0;
+
+  function render() {
+    const it = queue[i];
+    const sec = BUILD_SECTIONS.find((s) => s.s === it.s);
+    if (mode === 'path') { setProgress((it.n - 1) / BUILD.length); setMeta(it.n + ' / ' + BUILD.length); }
+    else { setProgress(i / queue.length); setMeta((i + 1) + ' / ' + queue.length); }
+    // Textes acceptés à chaque place : une plage libre accepte tous ses blocs
+    const slots = it.b.map((t, k) => {
+      const range = (it.free || []).find(([a, z]) => k >= a && k <= z);
+      return range ? it.b.slice(range[0], range[1] + 1) : [t];
+    });
+    const fits = (p, k) => !p.x && k < slots.length && slots[k].includes(p.t);
+    const pieces = it.b.map((t) => ({ t, x: false })).concat((it.x || []).map(([t]) => ({ t, x: true })));
+    let bank;
+    do { bank = shuffle(pieces); } while (bank.length > 1 && it.b.every((t, k) => bank[k].t === t));
+    const answer = [];
+    let marks = null;
+    let note = '';
+    let hints = 0;
+    let fails = 0;
+    let done = false;
+    const trapCount = (it.x || []).length;
+
+    const lineHTML = (p, k) => `<li><button type="button" class="bd-line${marks ? (marks[k] ? ' is-right' : ' is-wrong') : ''}" data-a="${k}"${done ? ' disabled' : ''}>${highlightSql(p.t)}${marks && p.x ? '<span class="bd-tag">intrus</span>' : ''}</button></li>`;
+    const draw = () => {
+      body.innerHTML = `<p class="eyebrow">Tronçon ${it.s} · ${esc(sec.title)} · Puzzle ${it.n}</p>
+        <p class="q">${esc(it.q)}</p>
+        <details class="bd-db"><summary>Tables de la base ${DB_LABEL[it.db]}</summary>${schemaHTML(it.db)}</details>
+        <div>
+          <p class="zone-label">Ta requête · ${answer.length}/${it.b.length} blocs${done ? '' : ' · touche une ligne pour la retirer'}</p>
+          <div class="bd-code">${answer.length ? `<ol>${answer.map(lineHTML).join('')}</ol>` : '<p class="bd-empty">Touche les blocs ci-dessous dans l\'ordre.</p>'}</div>
+        </div>
+        ${done ? '' : `<div>
+          <p class="zone-label">Blocs${trapCount ? ` · ${trapCount} intrus à laisser de côté` : ''}</p>
+          <div class="zone">${bank.map((p, k) => `<button type="button" class="part" data-b="${k}">${esc(p.t.trim())}</button>`).join('') || '<span class="muted">Tous les blocs sont placés.</span>'}</div>
+        </div>
+        <div class="row">
+          <button type="button" class="btn primary" id="bd-check"${answer.length === it.b.length ? '' : ' disabled'}>Vérifier</button>
+          <button type="button" class="btn" id="bd-hint">Indice (−1 ★)</button>
+          <button type="button" class="btn" id="bd-reset"${answer.length ? '' : ' disabled'}>Tout remettre</button>
+          ${fails ? '<button type="button" class="btn" id="bd-show">Voir la solution</button>' : ''}
+        </div>`}
+        <div id="fb" aria-live="polite">${note}</div>`;
+      if (done) { bindEnd(); return; }
+      $$('[data-b]', body).forEach((b) => b.addEventListener('click', () => { answer.push(bank.splice(Number(b.dataset.b), 1)[0]); changed(); }));
+      $$('[data-a]', body).forEach((b) => b.addEventListener('click', () => { bank.push(answer.splice(Number(b.dataset.a), 1)[0]); changed(); }));
+      $('#bd-reset', body).addEventListener('click', () => { bank = bank.concat(answer.splice(0)); changed(); });
+      $('#bd-hint', body).addEventListener('click', hint);
+      $('#bd-check', body).addEventListener('click', check);
+      const show = $('#bd-show', body);
+      if (show) show.addEventListener('click', () => finish(true));
+    };
+    const focusNext = () => {
+      const target = $('[data-b]', body) || $('#bd-check', body);
+      if (target) target.focus({ preventScroll: true });
+    };
+    const changed = () => { marks = null; note = ''; draw(); focusNext(); };
+    const scrollToFeedback = () => $('#fb', body).scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' });
+
+    // Indice : garde le début correct, renvoie le reste dans la réserve, place le bloc suivant
+    function hint() {
+      let k = 0;
+      while (k < answer.length && fits(answer[k], k)) k++;
+      if (k >= it.b.length) { note = '<p class="muted">Tous tes blocs sont bien placés : vérifie !</p>'; draw(); return; }
+      const removed = answer.length - k;
+      bank = bank.concat(answer.splice(k));
+      answer.push(bank.splice(bank.findIndex((p) => fits(p, k)), 1)[0]);
+      hints++;
+      marks = null;
+      note = `<p class="muted">Indice : bloc ${k + 1} placé.${removed ? ' Les blocs mal placés après lui sont revenus en bas.' : ''}</p>`;
+      draw();
+      focusNext();
+    }
+
+    function check() {
+      const res = answer.map(fits);
+      if (res.every(Boolean)) { marks = res; finish(false); return; }
+      fails++;
+      marks = res;
+      const wrong = res.filter((ok) => !ok).length;
+      note = `<div class="feedback ko pop"><strong>Pas encore.</strong><p>${wrong} bloc${wrong > 1 ? 's' : ''} en rouge à revoir. Touche une ligne pour la retirer, puis vérifie à nouveau.</p></div>`;
+      draw();
+      scrollToFeedback();
+    }
+
+    function finish(revealed) {
+      done = true;
+      const stars = revealed ? 0 : Math.max(1, 3 - hints - fails);
+      const prev = state.build[it.id];
+      state.build[it.id] = prev === undefined ? stars : Math.max(prev, stars);
+      results.push({ it, stars });
+      record(it, !revealed && hints === 0 && fails === 0);
+      if (revealed) { answer.splice(0, answer.length, ...it.b.map((t) => ({ t, x: false }))); marks = null; }
+      const last = i + 1 >= queue.length;
+      const traps = (it.x || []).map(([t, w]) => `<li><code>${esc(t.trim())}</code> : ${esc(w)}</li>`).join('');
+      note = `<div class="feedback ${revealed ? 'ko' : 'ok'} pop">
+          <strong>${revealed ? 'Voici la solution.' : 'Requête correcte !'} <span class="stars" aria-hidden="true">${starText(stars)}</span><span class="sr">${starsLabel(stars)}</span></strong>
+          <p>${esc(it.why)}</p>
+          ${it.r ? `<p><b>Résultat :</b> ${esc(it.r)}</p>` : ''}
+        </div>
+        ${traps ? `<div class="bd-traps"><p class="zone-label">Pourquoi les intrus sont faux</p><ul>${traps}</ul></div>` : ''}
+        <div class="row"><button type="button" class="btn primary" id="bd-next">${last ? (mode === 'series' ? 'Voir mon score' : 'Retour au parcours') : 'Puzzle suivant'}</button>${last && mode !== 'series' ? '' : '<button type="button" class="btn" id="bd-map">Parcours</button>'}</div>`;
+      draw();
+      if (stars === 3) burst();
+      scrollToFeedback();
+      $('#bd-next', body).focus({ preventScroll: true });
+    }
+
+    function bindEnd() {
+      $('#bd-next', body).addEventListener('click', () => {
+        i++;
+        if (i < queue.length) render();
+        else if (mode === 'series') summary();
+        else openBuild(mods);
+      });
+      const map = $('#bd-map', body);
+      if (map) map.addEventListener('click', () => openBuild(mods));
+    }
+
+    draw();
+    $('#stage-scroll').scrollTop = 0;
+  }
+
+  function summary() {
+    const total = results.reduce((acc, r) => acc + r.stars, 0);
+    const max = 3 * results.length;
+    setProgress(1);
+    setMeta('');
+    if (total === max) burst();
+    body.innerHTML = `<p class="eyebrow">Série terminée</p><div class="score-big">${total}/${max} ★</div><p>${total === max ? 'Sans faute : toutes les requêtes du premier coup.' : 'Les puzzles sous 3 ★ t\'attendent dans « À revoir », sur la carte du parcours.'}</p>
+      <ol class="recap-list bd-recap">${results.map((r) => `<li class="recap-item"><span>Puzzle ${r.it.n} · ${esc(r.it.q)}</span><span class="stars" aria-hidden="true">${starText(r.stars)}</span><span class="sr">${starsLabel(r.stars)}</span></li>`).join('')}</ol>
+      <div class="row"><button type="button" class="btn primary" id="bd-again">Encore 8 au hasard</button><button type="button" class="btn" id="bd-map">Parcours</button><button type="button" class="btn" data-close>Fermer</button></div>`;
+    $('#bd-again', body).addEventListener('click', () => playBuild(pick(filterMods(BUILD, mods), 8), 'series', mods));
+    $('#bd-map', body).addEventListener('click', () => openBuild(mods));
   }
 
   render();
